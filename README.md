@@ -1,156 +1,152 @@
 # TP3: Autenticação e Autorização em Microsserviços
 
-Projeto desenvolvido para a disciplina de Microsserviços, implementando autenticação e autorização stateless baseadas em **Tokens JWT (JSON Web Tokens)** entre múltiplos serviços Spring Boot 3.
+Trabalho prático focado em resolver autenticação e controle de acesso em arquitetura de microsserviços usando Spring Boot 3 e tokens JWT (JSON Web Tokens).
+
+A ideia central do projeto foi separar completamente a responsabilidade de quem autentica e emite tokens (`auth-service`) de quem consome e valida as requisições de negócio (`order-service`), mantendo a comunicação descentralizada e sem estado (stateless).
 
 ---
 
-## 1. Arquitetura da Solução
+## 1. Visão Geral da Arquitetura
 
-O sistema é composto por dois microsserviços independentes conteinerizados com Docker:
+O ecossistema é formado por dois serviços conteinerizados rodando em uma mesma bridge network no Docker:
 
 ```mermaid
 graph TD
-    Client["Cliente / Bruno API Client"]
+    Client["Cliente / Bruno API"]
     
     subgraph "Docker Network (tp3-network)"
         AuthService["auth-service (Porta 8081)<br/>• POST /auth/login<br/>• POST /auth/refresh<br/>• GET /auth/status"]
-        OrderService["order-service (Porta 8082)<br/>• GET /api/orders (Protegido)<br/>• POST /api/orders (Protegido)<br/>• GET /api/public/info (Público)"]
+        OrderService["order-service (Porta 8082)<br/>• GET /api/orders<br/>• POST /api/orders<br/>• GET /api/public/info"]
     end
 
     Client -->|"1. POST /auth/login (admin/admin123)"| AuthService
-    AuthService -->|"2. Emite Access Token + Refresh Token"| Client
-    Client -->|"3. GET /api/orders (Bearer AccessToken)"| OrderService
-    OrderService -->|"4. Valida assinatura HMAC-SHA e claims"| OrderService
-    OrderService -->|"5. Retorna 200 OK com pedidos"| Client
-    Client -->|"6. POST /auth/refresh (RefreshToken)"| AuthService
-    AuthService -->|"7. Emite novo Access Token"| Client
+    AuthService -->|"2. Retorna Access Token + Refresh Token"| Client
+    Client -->|"3. GET /api/orders (Bearer Token)"| OrderService
+    OrderService -->|"4. Valida assinatura HMAC e claims"| OrderService
+    OrderService -->|"5. Retorna 200 OK com lista de pedidos"| Client
+    Client -->|"6. POST /auth/refresh (com Refresh Token)"| AuthService
+    AuthService -->|"7. Devolve novo Access Token"| Client
 ```
 
-### Componentes:
-- **`auth-service` (Porta 8081)**: Microsserviço de autenticação e identidade. Valida credenciais de usuários, assina e emite **Access Tokens** (curta duração, 15 min) e **Refresh Tokens** (longa duração, 24h).
-- **`order-service` (Porta 8082)**: Microsserviço de negócio contendo rotas protegidas (gerenciamento de pedidos) e rotas públicas. Intercepta requisições via filtro de segurança (`JwtAuthenticationFilter`), valida a assinatura digital e autoriza a operação sem necessidade de chamadas síncronas ao `auth-service`.
+### Divisão de Responsabilidades
+- **`auth-service` (Porta 8081)**: Cuida exclusivamente de credenciais e ciclo de vida dos tokens. É onde o usuário bate para fazer login e renovar a sessão. Ele emite dois tipos de token:
+  - **Access Token**: Curto (15 minutos), usado diretamente no cabeçalho `Authorization: Bearer <token>` para consumir as APIs.
+  - **Refresh Token**: Longo (24 horas), guardado para renovar o acesso sem forçar o usuário a digitar a senha novamente.
+- **`order-service` (Porta 8082)**: Cuida das regras de negócio e catálogo de pedidos. Não consulta banco de usuários nem chama o `auth-service` a cada requisição; ele intercepta a requisição via `JwtAuthenticationFilter`, confere se a assinatura do token bate com a chave secreta compartilhada e libera ou barra a rota na hora.
 
 ---
 
-## 2. Justificativa da Escolha Tecnológica (JWT vs Keycloak)
+## 2. Por que JWT em vez de Keycloak?
 
-Para este projeto, optou-se pela implementação direta com **JWT (JSON Web Token)** utilizando a biblioteca `io.jsonwebtoken` (JJWT 0.12.6) e o ecossistema nativo do **Spring Security 6**.
+A especificação do trabalho permitia escolher entre JWT direto ou Keycloak. A opção adotada foi implementar com **JWT puro via Spring Security 6 e JJWT (0.12.6)** pelos seguintes motivos práticos:
 
-### Motivações:
-1. **Consumo de Recursos e Eficiência**: Uma instância do Keycloak requer um banco de dados relacional dedicado (PostgreSQL/MySQL) e JVM com alocação mínima superior a 1 GB de memória RAM, inviabilizando ambientes de desenvolvimento leves ou máquinas de avaliação com limites de recursos. Em contrapartida, a solução JWT é extremamente leve (executa em contêineres Alpine JRE com `~64MB` de heap cada).
-2. **Arquitetura Stateless e Desacoplamento**: O JWT permite que o `order-service` valide as credenciais e claims (`role`, `token_type`, `exp`, `sub`) de forma autônoma e descentralizada, apenas verificando a chave de assinatura HMAC criptograficamente segura, eliminando chamadas de rede adicionais para validação de sessão.
-3. **Controle Granular de Ciclo de Vida**: Implementação explícita da separação estrita entre **Access Token** (tipo `ACCESS`) e **Refresh Token** (tipo `REFRESH`), garantindo que tokens de refresh não possam ser usados indevidamente para acessar recursos protegidos.
+1. **Eficiência e Consumo de Memória**: O Keycloak precisa de um banco de dados próprio (como PostgreSQL) e consome facilmente mais de 1 GB de RAM só para subir. Em máquinas de desenvolvimento e contêineres locais, isso pesa bastante. Já os nossos dois microsserviços juntos rodam com menos de 200 MB de RAM em contêineres Alpine JRE.
+2. **Arquitetura Desacoplada e Rápida**: Com o JWT assinado simetricamente (HMAC-SHA), o `order-service` valida autenticidade e permissões de forma 100% autônoma na memória da JVM, sem latência extra de rede para checar sessão em servidor central.
+3. **Controle Fino das Regras**: Conseguimos definir claims específicos (`token_type: ACCESS` vs `REFRESH`) para evitar que tokens de renovação sejam usados indevidamente para acessar recursos de dados.
 
 ---
 
-## 3. Credenciais Pré-configuradas
+## 3. Usuários para Teste
 
-Os usuários já vêm previamente cadastrados em memória com senhas hasheadas via **BCrypt**:
+Os usuários já sobem cadastrados em memória, com senhas criptografadas via **BCrypt**:
 
-| Usuário | Senha | Perfil (Role) | Descrição |
+| Usuário | Senha | Perfil | Descrição |
 | :--- | :--- | :--- | :--- |
-| `admin` | `admin123` | `ROLE_ADMIN` | Administrador do sistema |
-| `user` | `user123` | `ROLE_USER` | Usuário padrão |
+| `admin` | `admin123` | `ROLE_ADMIN` | Acesso administrativo completo |
+| `user` | `user123` | `ROLE_USER` | Usuário padrão para criação de pedidos |
 
 ---
 
-## 4. Tabela de Endpoints
+## 4. Endpoints Disponíveis
 
 ### 4.1. `auth-service` (Porta 8081)
 
-| Método | Endpoint | Protegido? | Descrição | Status Sucesso |
+| Método | Rota | Requer Autenticação | Objetivo | Status Sucesso |
 | :--- | :--- | :---: | :--- | :---: |
-| `POST` | `/auth/login` | Não | Autentica usuário e emite par de tokens | `200 OK` |
-| `POST` | `/auth/refresh` | Não | Renova o access token a partir de um refresh token válido | `200 OK` |
-| `GET` | `/auth/status` | Não | Verificação de disponibilidade do serviço | `200 OK` |
+| `POST` | `/auth/login` | Não | Valida usuário/senha e retorna os tokens | `200 OK` |
+| `POST` | `/auth/refresh` | Não | Recebe refresh token e gera novo access token | `200 OK` |
+| `GET` | `/auth/status` | Não | Healthcheck do serviço de autenticação | `200 OK` |
 
 ### 4.2. `order-service` (Porta 8082)
 
-| Método | Endpoint | Protegido? | Descrição | Status Sucesso |
+| Método | Rota | Requer Autenticação | Objetivo | Status Sucesso |
 | :--- | :--- | :---: | :--- | :---: |
-| `GET` | `/api/public/info` | **Não (Público)** | Retorna informações gerais do serviço | `200 OK` |
-| `GET` | `/api/orders` | **Sim (Bearer JWT)** | Lista todos os pedidos cadastrados | `200 OK` |
-| `GET` | `/api/orders/{id}` | **Sim (Bearer JWT)** | Retorna um pedido específico por ID | `200 OK` |
-| `POST` | `/api/orders` | **Sim (Bearer JWT)** | Cadastra novo pedido associado ao usuário logado | `201 Created` |
+| `GET` | `/api/public/info` | **Não** | Informações públicas e status da API | `200 OK` |
+| `GET` | `/api/orders` | **Sim (Bearer)** | Lista os pedidos cadastrados | `200 OK` |
+| `GET` | `/api/orders/{id}` | **Sim (Bearer)** | Consulta detalhes de um pedido por ID | `200 OK` |
+| `POST` | `/api/orders` | **Sim (Bearer)** | Cria um novo pedido atribuído ao usuário logado | `201 Created` |
 
 ---
 
-## 5. Como Executar
+## 5. Como Subir o Projeto
 
-### Pré-requisitos
-- Docker e Docker Compose instalados **OU** Java 21+ e Apache Maven 3.9+.
+### Opção 1: Via Docker Compose (Mais fácil)
 
-### Opção A: Execução via Docker Compose (Recomendada)
-
-1. No diretório raiz do projeto (`TP-Microservicos-Spring-3`), execute:
-   ```bash
-   docker compose up -d --build
-   ```
-
-2. Verifique o status dos serviços:
-   ```bash
-   docker compose ps
-   ```
-
-3. Para acompanhar os logs de ambos os serviços:
-   ```bash
-   docker compose logs -f
-   ```
-
-4. Para parar a execução:
-   ```bash
-   docker compose down
-   ```
-
-### Opção B: Execução Local via Maven
-
-Se preferir rodar diretamente no terminal:
+Basta rodar na raiz do projeto:
 
 ```bash
-# Terminal 1: Auth Service (Porta 8081)
+# Build das imagens e inicialização dos contêineres
+docker compose up -d --build
+
+# Ver se os serviços estão de pé e quais portas estão mapeadas
+docker compose ps
+
+# Ver os logs subindo em tempo real
+docker compose logs -f
+
+# Para derrubar quando terminar
+docker compose down
+```
+
+### Opção 2: Direto pelo Maven (Local)
+
+Se quiser rodar fora do Docker, abra dois terminais:
+
+```bash
+# Terminal 1: auth-service (Porta 8081)
 cd auth-service
 mvn spring-boot:run
 
-# Terminal 2: Order Service (Porta 8082)
+# Terminal 2: order-service (Porta 8082)
 cd order-service
 mvn spring-boot:run
 ```
 
 ---
 
-## 6. Como Testar com o Bruno API Client
+## 6. Como Testar no Bruno
 
-A pasta [`bruno/`](./bruno) contém a coleção completa configurada para testar todos os cenários de avaliação.
+Preparamos a pasta [`bruno/`](./bruno) com a coleção pronta para o professor ou avaliador testar o fluxo completo em segundos.
 
-### Passo a Passo no Bruno:
+### Passo a passo:
 1. Abra o **Bruno**.
-2. Clique em **Open Collection** e selecione a pasta `bruno/` deste repositório.
-3. No canto superior direito, selecione o ambiente **`local`**.
-4. Execute as requisições na ordem numérica:
+2. Clique em **Open Collection** e aponte para a pasta `bruno/` deste repositório.
+3. No seletor de ambiente (canto superior direito), escolha **`local`**.
+4. Dispare as requisições na ordem abaixo:
 
-| Sequência | Arquivo `.bru` | Método e URL | Comportamento Esperado |
+| Passo | Requisição | Rota | O que ela valida |
 | :---: | :--- | :--- | :--- |
-| **1** | `01-Acesso-Sem-Autenticacao.bru` | `GET {{order_url}}/api/orders` | Retorna `401 Unauthorized` (acesso bloqueado) |
-| **2** | `02-Login-Credencial-Invalida.bru` | `POST {{auth_url}}/auth/login` | Retorna `401 Unauthorized` com mensagem de erro |
-| **3** | `03-Login-Sucesso.bru` | `POST {{auth_url}}/auth/login` | Retorna `200 OK` e **armazena automaticamente** `access_token` e `refresh_token` no ambiente |
-| **4** | `04-Acessar-Rota-Protegida.bru` | `GET {{order_url}}/api/orders` | Retorna `200 OK` utilizando o `access_token` obtido |
-| **5** | `05-Criar-Pedido-Protegido.bru` | `POST {{order_url}}/api/orders` | Retorna `201 Created` e associa o pedido ao usuário autenticado |
-| **6** | `06-Refresh-Token.bru` | `POST {{auth_url}}/auth/refresh` | Retorna `200 OK` e **atualiza automaticamente** o `access_token` no ambiente |
-| **7** | `07-Acessar-Com-Novo-Token.bru` | `GET {{order_url}}/api/orders` | Retorna `200 OK` comprovando que o novo token é aceito |
-| **8** | `08-Endpoint-Publico.bru` | `GET {{order_url}}/api/public/info` | Retorna `200 OK` sem necessitar de autenticação |
+| **1** | `01-Acesso-Sem-Autenticacao.bru` | `GET {{order_url}}/api/orders` | Confirma que sem token o acesso é barrado com `401` |
+| **2** | `02-Login-Credencial-Invalida.bru` | `POST {{auth_url}}/auth/login` | Confirma que senha errada devolve `401` |
+| **3** | `03-Login-Sucesso.bru` | `POST {{auth_url}}/auth/login` | Login com `admin123`. Salva o `access_token` e o `refresh_token` automaticamente no Bruno |
+| **4** | `04-Acessar-Rota.bru` | `GET {{order_url}}/api/orders` | Acessa a listagem usando o token recém-gerado (`200 OK`) |
+| **5** | `05-Criar-Pedido.bru` | `POST {{order_url}}/api/orders` | Cria um pedido no nome do usuário autenticado (`201 Created`) |
+| **6** | `06-Refresh-Token.bru` | `POST {{auth_url}}/auth/refresh` | Usa o token de refresh para renovar a sessão e atualiza a variável no Bruno |
+| **7** | `07-Acessar-Com-Novo-Token.bru` | `GET {{order_url}}/api/orders` | Garante que o novo token continua liberando o acesso (`200 OK`) |
+| **8** | `08-Endpoint-Publico.bru` | `GET {{order_url}}/api/public/info` | Rota aberta que não exige token (`200 OK`) |
 
-> **Nota sobre automação**: As requisições `03-Login-Sucesso` e `06-Refresh-Token` possuem script pós-resposta (`script:post-response`) embutido no arquivo `.bru` que atualiza as variáveis `access_token` e `refresh_token` no ambiente do Bruno de forma 100% transparente.
+> **Automação no Bruno**: As requisições `03` e `06` já contam com um script pós-resposta (`script:post-response`) que extrai os tokens do corpo da resposta e alimenta o ambiente do Bruno sozinho, sem necessidade de copiar e colar nada manualmente.
 
 ---
 
-## 7. Execução dos Testes Automatizados (JUnit 5 + MockMvc)
+## 7. Testes Automatizados
 
-Ambos os projetos possuem testes automatizados de integração cobrindo fluxos de sucesso e falha:
+Caso queira rodar a suíte de testes unitários e de integração pelo terminal:
 
 ```bash
-# Executar testes do auth-service
+# Testes do auth-service (login, refresh, validações de senha e token)
 cd auth-service && mvn test
 
-# Executar testes do order-service
+# Testes do order-service (filtro JWT, rotas públicas e rotas restritas)
 cd ../order-service && mvn test
 ```
