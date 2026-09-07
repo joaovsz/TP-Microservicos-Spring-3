@@ -1,0 +1,8 @@
+CREATE TABLE IF NOT EXISTS orders (
+    id BIGSERIAL PRIMARY KEY,
+    customer VARCHAR(100) NOT NULL,
+    item VARCHAR(255) NOT NULL,
+    quantity INTEGER NOT NULL,
+    total_price NUMERIC(12, 2) NOT NULL,
+    status VARCHAR(50) NOT NULL
+);

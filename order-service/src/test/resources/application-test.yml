@@ -1,0 +1,11 @@
+spring:
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+auth:
+  service:
+    url: http://localhost:8081
+
+jwt:
+  secret: my-ultra-secure-and-ultra-long-jwt-secret-key-tp3-microservices-2026-spring-boot

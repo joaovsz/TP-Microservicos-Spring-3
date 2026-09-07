@@ -1,11 +1,18 @@
 package com.faculdade.order.model;
 
+import org.springframework.data.annotation.Id;
+import org.springframework.data.relational.core.mapping.Column;
+import org.springframework.data.relational.core.mapping.Table;
+
+@Table("orders")
 public class Order {
 
+    @Id
     private Long id;
     private String customer;
     private String item;
     private Integer quantity;
+    @Column("total_price")
     private Double totalPrice;
     private String status;
 
@@ -19,6 +26,10 @@ public class Order {
         this.quantity = quantity;
         this.totalPrice = totalPrice;
         this.status = status;
+    }
+
+    public Order(String customer, String item, Integer quantity, Double totalPrice, String status) {
+        this(null, customer, item, quantity, totalPrice, status);
     }
 
     public Long getId() {
