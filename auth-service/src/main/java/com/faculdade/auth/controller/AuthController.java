@@ -32,6 +32,11 @@ public class AuthController {
         return ResponseEntity.ok(response);
     }
 
+    @GetMapping("/users/{username}")
+    public ResponseEntity<com.faculdade.auth.dto.UserSummaryResponse> getUser(@PathVariable String username) {
+        return ResponseEntity.ok(authService.getUserSummary(username));
+    }
+
     @GetMapping("/status")
     public ResponseEntity<Map<String, String>> status() {
         return ResponseEntity.ok(Map.of(

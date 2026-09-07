@@ -1,0 +1,17 @@
+meta {
+  name: 09-Consultar-Usuario
+  type: http
+  seq: 9
+}
+
+get {
+  url: {{auth_url}}/auth/users/admin
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.username: eq admin
+  res.body.role: eq ROLE_ADMIN
+}

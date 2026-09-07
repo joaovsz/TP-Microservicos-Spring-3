@@ -3,41 +3,39 @@ package com.faculdade.auth.service;
 import com.faculdade.auth.dto.AuthResponse;
 import com.faculdade.auth.dto.LoginRequest;
 import com.faculdade.auth.dto.RefreshRequest;
+import com.faculdade.auth.dto.UserSummaryResponse;
+import com.faculdade.auth.model.User;
+import com.faculdade.auth.repository.UserRepository;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.NoSuchElementException;
 
 @Service
 public class AuthService {
 
-    public record UserRecord(String username, String passwordHash, String role) {}
-
     private final JwtService jwtService;
+    private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
-    private final Map<String, UserRecord> users = new ConcurrentHashMap<>();
 
-    public AuthService(JwtService jwtService) {
+    public AuthService(JwtService jwtService, UserRepository userRepository) {
         this.jwtService = jwtService;
+        this.userRepository = userRepository;
         this.passwordEncoder = new BCryptPasswordEncoder();
-
-        // Usuários padrão em memória com senhas hasheadas via BCrypt
-        users.put("admin", new UserRecord("admin", passwordEncoder.encode("admin123"), "ROLE_ADMIN"));
-        users.put("user", new UserRecord("user", passwordEncoder.encode("user123"), "ROLE_USER"));
     }
 
     public AuthResponse login(LoginRequest request) {
-        UserRecord user = users.get(request.getUsername());
+        User user = userRepository.findByUsername(request.getUsername())
+                .orElseThrow(() -> new BadCredentialsException("Credenciais inválidas"));
 
-        if (user == null || !passwordEncoder.matches(request.getPassword(), user.passwordHash())) {
+        if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
             throw new BadCredentialsException("Credenciais inválidas");
         }
 
-        String accessToken = jwtService.generateAccessToken(user.username(), user.role());
-        String refreshToken = jwtService.generateRefreshToken(user.username());
+        String accessToken = jwtService.generateAccessToken(user.getUsername(), user.getRole());
+        String refreshToken = jwtService.generateRefreshToken(user.getUsername());
 
         return new AuthResponse(accessToken, refreshToken, "Bearer", jwtService.getAccessTokenExpirationSeconds());
     }
@@ -55,16 +53,19 @@ public class AuthService {
         }
 
         String username = jwtService.extractUsername(token);
-        UserRecord user = users.get(username);
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new BadCredentialsException("Usuário associado ao token não encontrado"));
 
-        if (user == null) {
-            throw new BadCredentialsException("Usuário associado ao token não encontrado");
-        }
-
-        String newAccessToken = jwtService.generateAccessToken(user.username(), user.role());
-        String newRefreshToken = jwtService.generateRefreshToken(user.username());
+        String newAccessToken = jwtService.generateAccessToken(user.getUsername(), user.getRole());
+        String newRefreshToken = jwtService.generateRefreshToken(user.getUsername());
 
         return new AuthResponse(newAccessToken, newRefreshToken, "Bearer", jwtService.getAccessTokenExpirationSeconds());
+    }
+
+    public UserSummaryResponse getUserSummary(String username) {
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new NoSuchElementException("Usuário '" + username + "' não encontrado"));
+        return new UserSummaryResponse(user.getId(), user.getUsername(), user.getRole());
     }
 
     public PasswordEncoder getPasswordEncoder() {

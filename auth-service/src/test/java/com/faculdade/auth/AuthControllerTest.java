@@ -13,6 +13,12 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
+import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.test.context.ActiveProfiles;
+import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -20,7 +26,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
+@Testcontainers
+@ActiveProfiles("test")
 class AuthControllerTest {
+
+    @Container
+    @ServiceConnection
+    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
 
     @Autowired
     private MockMvc mockMvc;
@@ -118,5 +130,22 @@ class AuthControllerTest {
                         .content(objectMapper.writeValueAsString(refreshRequest)))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.status").value(401));
+    }
+
+    @Test
+    @DisplayName("Buscar usuário existente por username deve retornar 200 e dados do usuário")
+    void testGetUserSummarySuccess() throws Exception {
+        mockMvc.perform(get("/auth/users/admin"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.username").value("admin"))
+                .andExpect(jsonPath("$.role").value("ROLE_ADMIN"));
+    }
+
+    @Test
+    @DisplayName("Buscar usuário inexistente deve retornar 404 Not Found")
+    void testGetUserSummaryNotFound() throws Exception {
+        mockMvc.perform(get("/auth/users/nao_existe"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404));
     }
 }
