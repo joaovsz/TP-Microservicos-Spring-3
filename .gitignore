@@ -1,0 +1,14 @@
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+### IDEs ###
+.idea/
+*.iml
+.vscode/
+
+### OS files ###
+.DS_Store
+Thumbs.db
+*.log
