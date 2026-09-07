@@ -114,39 +114,7 @@ mvn spring-boot:run
 
 ---
 
-## 6. Como Testar no Bruno
+## 6. Coleção de Requisições (Bruno)
 
-Preparamos a pasta [`bruno/`](./bruno) com a coleção pronta para o professor ou avaliador testar o fluxo completo em segundos.
+A coleção de requisições para validação dos endpoints e fluxo de renovação de tokens está organizada na pasta [`bruno/`](./bruno), pronta para uso com o ambiente `local`.
 
-### Passo a passo:
-1. Abra o **Bruno**.
-2. Clique em **Open Collection** e aponte para a pasta `bruno/` deste repositório.
-3. No seletor de ambiente (canto superior direito), escolha **`local`**.
-4. Dispare as requisições na ordem abaixo:
-
-| Passo | Requisição | Rota | O que ela valida |
-| :---: | :--- | :--- | :--- |
-| **1** | `01-Acesso-Sem-Autenticacao.bru` | `GET {{order_url}}/api/orders` | Confirma que sem token o acesso é barrado com `401` |
-| **2** | `02-Login-Credencial-Invalida.bru` | `POST {{auth_url}}/auth/login` | Confirma que senha errada devolve `401` |
-| **3** | `03-Login-Sucesso.bru` | `POST {{auth_url}}/auth/login` | Login com `admin123`. Salva o `access_token` e o `refresh_token` automaticamente no Bruno |
-| **4** | `04-Acessar-Rota.bru` | `GET {{order_url}}/api/orders` | Acessa a listagem usando o token recém-gerado (`200 OK`) |
-| **5** | `05-Criar-Pedido.bru` | `POST {{order_url}}/api/orders` | Cria um pedido no nome do usuário autenticado (`201 Created`) |
-| **6** | `06-Refresh-Token.bru` | `POST {{auth_url}}/auth/refresh` | Usa o token de refresh para renovar a sessão e atualiza a variável no Bruno |
-| **7** | `07-Acessar-Com-Novo-Token.bru` | `GET {{order_url}}/api/orders` | Garante que o novo token continua liberando o acesso (`200 OK`) |
-| **8** | `08-Endpoint-Publico.bru` | `GET {{order_url}}/api/public/info` | Rota aberta que não exige token (`200 OK`) |
-
-> **Automação no Bruno**: As requisições `03` e `06` já contam com um script pós-resposta (`script:post-response`) que extrai os tokens do corpo da resposta e alimenta o ambiente do Bruno sozinho, sem necessidade de copiar e colar nada manualmente.
-
----
-
-## 7. Testes Automatizados
-
-Caso queira rodar a suíte de testes unitários e de integração pelo terminal:
-
-```bash
-# Testes do auth-service (login, refresh, validações de senha e token)
-cd auth-service && mvn test
-
-# Testes do order-service (filtro JWT, rotas públicas e rotas restritas)
-cd ../order-service && mvn test
-```
