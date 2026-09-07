@@ -1,0 +1,32 @@
+meta {
+  name: 03-Login-Sucesso
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{auth_url}}/auth/login
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "username": "admin",
+    "password": "admin123"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.accessToken: isDefined
+  res.body.refreshToken: isDefined
+  res.body.tokenType: eq Bearer
+}
+
+script:post-response {
+  if (res.status === 200) {
+    bru.setEnvVar("access_token", res.body.accessToken);
+    bru.setEnvVar("refresh_token", res.body.refreshToken);
+  }
+}

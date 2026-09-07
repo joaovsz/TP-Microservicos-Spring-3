@@ -1,0 +1,17 @@
+meta {
+  name: 08-Endpoint-Publico
+  type: http
+  seq: 8
+}
+
+get {
+  url: {{order_url}}/api/public/info
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.status: eq ONLINE
+  res.body.service: eq order-service
+}

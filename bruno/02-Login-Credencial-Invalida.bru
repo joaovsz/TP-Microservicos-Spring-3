@@ -1,0 +1,22 @@
+meta {
+  name: 02-Login-Credencial-Invalida
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{auth_url}}/auth/login
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "username": "admin",
+    "password": "senha_incorreta"
+  }
+}
+
+assert {
+  res.status: eq 401
+}
