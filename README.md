@@ -1,211 +1,184 @@
-# AT: Microsserviços com Spring Cloud (Continuação TP3)
+# Assessment Test (AT): Microsserviços com Spring Cloud
+
+[![CI/CD Pipeline](https://github.com/joaovsz/TP-Microservicos-Spring-3/actions/workflows/ci.yml/badge.svg?branch=atividade-joaovitor)](https://github.com/joaovsz/TP-Microservicos-Spring-3/actions/workflows/ci.yml)
+![Java](https://img.shields.io/badge/Java-17-orange.svg?logo=openjdk)
+![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.3.4-brightgreen.svg?logo=springboot)
+![Spring Cloud](https://img.shields.io/badge/Spring%20Cloud-2023.0.3-blue.svg)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg?logo=docker)
 
 **Aluno:** João Vitor Pereira de Souza  
-**Matrícula:** 70636043177
-
-Trabalho prático focado em microsserviços escaláveis com Spring Boot 3, Spring Cloud (Eureka Server, Config Server, API Gateway, OpenFeign), autenticação JWT e arquitetura distribuída.
-
-A ideia central do projeto foi separar completamente a responsabilidade de quem autentica e emite tokens (`auth-service`) de quem consome e valida as requisições de negócio (`order-service`), mantendo a comunicação descentralizada, sem estado (stateless) e com banco de dados isolado por serviço (*Database-per-Service*).
+**Matrícula:** 70636043177  
+**Repositório:** [joaovsz/TP-Microservicos-Spring-3](https://github.com/joaovsz/TP-Microservicos-Spring-3)  
+**Pull Request:** [#1 Atividade AT - João Vitor Pereira de Souza](https://github.com/joaovsz/TP-Microservicos-Spring-3/pull/1)
 
 ---
 
-## 1. Visão Geral da Arquitetura
+## 1. Visão Geral da Arquitetura do AT
 
-O ecossistema é formado por quatro contêineres rodando em uma mesma rede bridge no Docker (`tp3-network`):
+Este projeto representa a implementação completa do **Assessment Test (AT)** da disciplina de **Microsserviços e Engenharia de Softwares Escaláveis**. 
 
-![Diagrama de sequência do fluxo de autenticação](./screenshots/00-diagrama-sequencia-fluxo-auth.png)
+Partindo da base desenvolvida em sala de aula e no TP3, o ecossistema foi expandido com a arquitetura completa do **Spring Cloud**, incluindo Service Discovery, Configuração Centralizada, Roteamento Dinâmico por API Gateway, Comunicação Declarativa com OpenFeign, Banco H2 em memória, Conteinerização com Docker Compose e Pipeline de Integração Contínua (CI) com GitHub Actions.
 
-### Modelo Híbrido: Síncrono (JDBC) + Reativo (WebFlux & R2DBC)
+```mermaid
+flowchart TD
+    Client["Cliente / Bruno / Postman / Navegador"] -->|Porta 8085| Gateway["api-gateway (8085)\nSpring Cloud Gateway"]
+    
+    subgraph SpringCloudInfra ["Infraestrutura Spring Cloud"]
+        Eureka["eureka-server (8761)\nService Discovery"]
+        ConfigServer["config-server (8888)\nSpring Cloud Config"]
+        ConfigRepo["config-repo/\n(Repositório de Propriedades)"]
+        ConfigServer --- ConfigRepo
+    end
 
-![Diagrama da arquitetura híbrida](./screenshots/00b-diagrama-arquitetura-hibrida.png)
+    Gateway -->|Descoberta| Eureka
+    Gateway -->|Roteamento Dinâmico| Fornecedores["fornecedores-service (8084)\n(H2, JPA, Carga 5 Registros)"]
+    Gateway -->|Roteamento Dinâmico| Produtos["produtos-service (8081)\n(Catálogo de Produtos)"]
 
-### Divisão de Responsabilidades
+    Fornecedores -->|Registra-se| Eureka
+    Produtos -->|Registra-se| Eureka
+    Gateway -->|Registra-se| Eureka
 
-O `auth-service` (porta 8081) ficou no modelo síncrono: cuida de credenciais e do ciclo de vida dos tokens, persistindo tudo via Spring Data JDBC num PostgreSQL dedicado (`auth-db`), com o schema versionado por Flyway (`V1__create_users.sql`, `V2__seed_users.sql`). Também expõe `GET /auth/users/{username}`, usado pelo `order-service` pra buscar dados do usuário. As migrations e o repositório JDBC têm testes de integração com Testcontainers subindo um PostgreSQL real, não mockado.
-
-Já o `order-service` (porta 8082) é 100% reativo: Spring WebFlux, `Mono`/`Flux` do Project Reactor, e Spring Data R2DBC com o driver assíncrono `r2dbc-postgresql` apontando pro seu próprio banco (`order-db`). O filtro de autenticação virou um `JwtAuthenticationWebFilter` (um `WebFilter` de verdade, integrado ao `ServerHttpSecurity`, não o filtro blocking de antes). Quando alguém consulta ou cria um pedido, o serviço chama o `auth-service` via `WebClient` (não bloqueante, com `flatMap`) pra trazer a `customerRole` e enriquecer a resposta. Os testes cobrem esse fluxo inteiro: `StepVerifier` e `WebTestClient` pro lado reativo, Testcontainers pro PostgreSQL, e `MockWebServer` simulando o `auth-service` sem precisar subir ele de verdade.
-
-Cada serviço só enxerga o próprio banco: `auth-db` guarda a tabela `users` (porta 5433 no host), `order-db` guarda a tabela `orders` (porta 5434 no host), ambos PostgreSQL 16, sem nenhuma tabela compartilhada entre os dois.
+    Fornecedores -->|Busca Configuração| ConfigServer
+    Fornecedores -->|OpenFeign GET /produtos| Produtos
+```
 
 ---
 
-## 2. Por que JWT em vez de Keycloak?
+## 2. Mapa de Portas e Microsserviços
 
-A especificação do trabalho permitia escolher entre JWT direto ou Keycloak. A opção adotada foi implementar com **JWT puro via Spring Security 6 e JJWT (0.12.6)**:
-
-- **Consumo de Recursos**: Keycloak exige banco de dados próprio e consome facilmente mais de 1 GB de RAM só para subir. Nossos microsserviços rodam com dezenas de megabytes em contêineres Alpine JRE.
-- **Arquitetura Desacoplada e Autonomia**: Com o JWT assinado simetricamente (HMAC-SHA), o `order-service` valida autenticidade e permissões em memória, sem latência adicional na checagem de rotas.
-- **Tipagem de Tokens**: Distinção clara entre `token_type: ACCESS` (curta duração, 15 min) e `REFRESH` (longa duração, 24h), impedindo o uso indevido de tokens de renovação em rotas de recursos.
+| Microsserviço | Porta | Tecnologia Principal | Papel no Ecossistema |
+| :--- | :---: | :--- | :--- |
+| **`eureka-server`** | `8761` | Spring Cloud Netflix Eureka | Registro e Descoberta de Serviços (*Service Registry*) |
+| **`config-server`** | `8888` | Spring Cloud Config Server | Centralização e externalização de propriedades via `config-repo/` |
+| **`produtos-service`** | `8081` | Spring Boot Web + Eureka Client | Catálogo de produtos consultado via OpenFeign |
+| **`fornecedores-service`** | `8084` | Spring Boot Data JPA + H2 + Feign | **Serviço principal do AT:** CRUD de fornecedores e integração |
+| **`api-gateway`** | `8085` | Spring Cloud Gateway + Eureka | Ponto único de entrada e roteador dinâmico de requisições |
 
 ---
 
-## 3. Usuários Padrão para Teste
+## 3. Estrutura do Novo Microsserviço: `fornecedores-service`
 
-Os usuários são inicializados automaticamente no banco de dados via migrations Flyway, com senhas criptografadas via **BCrypt**:
+O microsserviço [`fornecedores-service`](./fornecedores-service) foi construído no pacote `br.edu.infnet.fornecedores`, atendendo a todos os requisitos de domínio e validação:
 
-| Usuário | Senha | Perfil | Descrição |
-| :--- | :--- | :--- | :--- |
-| `admin` | `admin123` | `ROLE_ADMIN` | Acesso administrativo completo |
-| `user` | `user123` | `ROLE_USER` | Usuário padrão para pedidos |
+* **Entidade `Fornecedor`:**
+  * `id`: Chave primária gerada automaticamente (`GenerationType.IDENTITY`).
+  * `nome`: Obrigatório (`@NotBlank`, `@Column(nullable = false)`).
+  * `cnpj`: Obrigatório e exclusivo (`@NotBlank`, `@Column(nullable = false, unique = true)`).
+  * `email` e `telefone`: Informações complementares de contato.
+* **Repositório:** `FornecedorRepository extends JpaRepository<Fornecedor, Long>`.
+* **Carga Inicial Automática (`DataInitializer`):**
+  Ao iniciar a aplicação, 5 fornecedores padrão são persistidos no H2 em memória caso a base esteja vazia:
+  1. *Tech Distribuidora LTDA* (CNPJ: `11.222.333/0001-44`)
+  2. *Global Pecas e Componentes* (CNPJ: `22.333.444/0001-55`)
+  3. *Logistica Express Brasil* (CNPJ: `33.444.555/0001-66`)
+  4. *Alimentos Brasil S/A* (CNPJ: `44.555.666/0001-77`)
+  5. *Papelaria Central Atacadista* (CNPJ: `55.666.777/0001-88`)
+* **Console H2:** Habilitado em `http://localhost:8084/h2-console` (JDBC URL: `jdbc:h2:mem:fornecedoresdb`, User: `sa`).
 
 ---
 
 ## 4. Endpoints Disponíveis
 
-### 4.1. `auth-service` (Porta 8081)
+### 4.1. `fornecedores-service` (Acesso Direto: `8084` | Via Gateway: `8085`)
 
-| Método | Rota | Requer Autenticação | Descrição | Status Sucesso |
-| :--- | :--- | :---: | :--- | :---: |
-| `POST` | `/auth/login` | Não | Valida usuário/senha e emite o par de tokens | `200 OK` |
-| `POST` | `/auth/refresh` | Não | Recebe refresh token e emite novos tokens | `200 OK` |
-| `GET` | `/auth/users/{username}` | Não | Consulta dados públicos do usuário (consumido pelo WebClient) | `200 OK` |
-| `GET` | `/auth/status` | Não | Healthcheck do serviço de autenticação | `200 OK` |
+| Método | Rota Direta (8084) | Rota Gateway (8085) | Descrição | Status Retorno |
+| :--- | :--- | :--- | :--- | :---: |
+| `GET` | `/fornecedores` | `/fornecedores` | Lista todos os fornecedores cadastrados | `200 OK` |
+| `GET` | `/fornecedores/{id}` | `/fornecedores/{id}` | Consulta fornecedor por ID (ou 404 se não existir) | `200 OK` / `404 Not Found` |
+| `POST` | `/fornecedores` | `/fornecedores` | Cadastra novo fornecedor a partir de JSON | `201 Created` |
+| `GET` | `/fornecedores/produtos` | `/fornecedores/produtos` | **OpenFeign:** Consulta o catálogo do `produtos-service` | `200 OK` |
 
-### 4.2. `order-service` (Porta 8082, Reativo)
-
-| Método | Rota | Requer Autenticação | Descrição | Status Sucesso |
-| :--- | :--- | :---: | :--- | :---: |
-| `GET` | `/api/public/info` | **Não** | Status público da API e instruções de uso | `200 OK` |
-| `GET` | `/api/orders` | **Sim (Bearer)** | Fluxo de pedidos enriquecidos com perfil via WebClient | `200 OK` |
-| `GET` | `/api/orders/{id}` | **Sim (Bearer)** | Consulta reativa de pedido por ID | `200 OK` |
-| `POST` | `/api/orders` | **Sim (Bearer)** | Cria pedido reativo atribuído ao usuário logado | `201 Created` |
-
----
-
-## 5. Autenticação e Enriquecimento via WebClient
-
-### 5.1. Fazendo Login
+### 4.2. Exemplo de Requisição `POST /fornecedores`
 
 ```bash
-curl -X POST http://localhost:8081/auth/login \
+curl -X POST http://localhost:8085/fornecedores \
   -H "Content-Type: application/json" \
-  -d '{"username": "admin", "password": "admin123"}'
+  -d '{
+    "nome": "Distribuidora Beta Tech",
+    "cnpj": "12.345.678/0001-99",
+    "email": "contato@betatech.com",
+    "telefone": "(11) 98888-7777"
+  }'
 ```
 
-Resposta:
-
+Resposta (`201 Created`):
 ```json
 {
-  "accessToken": "eyJhbGciOiJIUzUxMiJ9...",
-  "refreshToken": "eyJhbGciOiJIUzUxMiJ9...",
-  "tokenType": "Bearer",
-  "expiresIn": 900
-}
-```
-
-### 5.2. Consulta de Perfil no `auth-service`
-
-Endpoint público consumido pelo `order-service` para obter metadados do usuário:
-
-```bash
-curl http://localhost:8081/auth/users/admin
-```
-
-Resposta:
-
-```json
-{
-  "id": 1,
-  "username": "admin",
-  "role": "ROLE_ADMIN"
-}
-```
-
-### 5.3. Enriquecimento Reativo no `order-service`
-
-Ao consultar ou cadastrar pedidos com o `accessToken`, o `order-service` executa uma chamada reativa não bloqueante ao `auth-service` usando `WebClient` para obter a `customerRole`:
-
-```bash
-curl http://localhost:8082/api/orders \
-  -H "Authorization: Bearer <accessToken>"
-```
-
-Resposta enriquecida:
-
-```json
-[
-  {
-    "id": 1,
-    "customer": "admin",
-    "customerRole": "ROLE_ADMIN",
-    "item": "MacBook Pro M3 Max",
-    "quantity": 1,
-    "totalPrice": 19999.0,
-    "status": "CONFIRMED"
-  },
-  {
-    "id": 2,
-    "customer": "user",
-    "customerRole": "ROLE_USER",
-    "item": "Monitor Dell UltraSharp 32 4K",
-    "quantity": 2,
-    "totalPrice": 7200.0,
-    "status": "CONFIRMED"
-  }
-]
-```
-
-### 5.4. Criando um Novo Pedido
-
-```bash
-curl -X POST http://localhost:8082/api/orders \
-  -H "Authorization: Bearer <accessToken>" \
-  -H "Content-Type: application/json" \
-  -d '{"item": "Kit Manutenção Aviônica Garmin G1000", "quantity": 1, "totalPrice": 14500.00}'
-```
-
-Resposta `201 Created`:
-
-```json
-{
-  "id": 3,
-  "customer": "admin",
-  "customerRole": "ROLE_ADMIN",
-  "item": "Kit Manutenção Aviônica Garmin G1000",
-  "quantity": 1,
-  "totalPrice": 14500.0,
-  "status": "CREATED"
+  "id": 6,
+  "nome": "Distribuidora Beta Tech",
+  "cnpj": "12.345.678/0001-99",
+  "email": "contato@betatech.com",
+  "telefone": "(11) 98888-7777"
 }
 ```
 
 ---
 
-## 6. Como Subir o Projeto
+## 5. Integrações Spring Cloud Implementadas
 
-### Opção 1: Via Docker Compose (Recomendado)
+1. **Service Discovery com Eureka Server:**
+   * Todos os microsserviços utilizam `@EnableDiscoveryClient` e se registram no Eureka (`http://localhost:8761`).
+   * Configuração de sincronização rápida (5s) para atualização dinâmica imediata da topologia.
+2. **Spring Cloud Config Server e `config-repo`:**
+   * Configurações centralizadas na pasta [`config-repo/`](./config-repo).
+   * O `fornecedores-service` busca dinamicamente suas propriedades via `spring.config.import=optional:configserver:http://localhost:8888`.
+3. **Comunicação Declarativa com OpenFeign:**
+   * O `fornecedores-service` utiliza `@EnableFeignClients` e a interface `ProdutoClient` para consumir o `produtos-service` sem necessidade de URLs fixas no código, balanceando a carga via Eureka.
+4. **Roteamento Dinâmico com API Gateway:**
+   * O `api-gateway` na porta `8085` utiliza Discovery Locator para rotear requisições diretamente para `lb://fornecedores-service` e `lb://produtos-service`.
 
-Sobe os dois bancos de dados (`auth-db` e `order-db`) com seus respectivos healthchecks, aguarda que estejam saudáveis e inicializa os microsserviços:
+---
+
+## 6. Orquestração com Docker e Docker Compose
+
+O ecossistema conta com `Dockerfiles` otimizados baseados na imagem oficial multi-arquitetura **Eclipse Temurin 17 JRE** (compatível nativamente com Apple Silicon ARM64 e x86_64).
+
+### Subindo todo o ambiente conteinerizado:
 
 ```bash
-# Build das imagens e subida completa da stack
-docker compose up -d --build
+# 1. Compilar os JARs dos projetos a partir da raiz
+mvn clean package -DskipTests
 
-# Verificar status dos contêineres e healthchecks
+# 2. Subir todos os microsserviços via Docker Compose
+docker compose up -d
+
+# 3. Conferir o status de todos os contêineres
 docker compose ps
-
-# Acompanhar logs unificados
-docker compose logs -f
-
-# Derrubar a stack quando finalizar
-docker compose down
-```
-
-### Opção 2: Execução de Testes Automatizados com Testcontainers
-
-Ambos os serviços possuem suítes completas de testes de integração que sobem contêineres PostgreSQL temporários via Testcontainers automaticamente:
-
-```bash
-# Testes do auth-service (Spring Data JDBC + Flyway + Testcontainers)
-cd auth-service
-mvn test
-
-# Testes do order-service (WebFlux + R2DBC + WebTestClient + Testcontainers + MockWebServer)
-cd ../order-service
-mvn test
 ```
 
 ---
 
-## 7. Coleção de Requisições (Bruno)
+## 7. Pipeline de Integração Contínua (GitHub Actions)
 
-A pasta [`bruno/`](./bruno) contém todas as requisições configuradas para testar o fluxo ponta a ponta (login com credenciais válidas e inválidas, refresh token, chamadas autenticadas e enriquecimento via WebClient).
+[![CI/CD Pipeline](https://github.com/joaovsz/TP-Microservicos-Spring-3/actions/workflows/ci.yml/badge.svg?branch=atividade-joaovitor)](https://github.com/joaovsz/TP-Microservicos-Spring-3/actions/workflows/ci.yml)
+
+O workflow automatizado [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) é disparado a cada `push` na branch `main`, em branches de atividade (`atividade-**`) e na abertura/atualização de Pull Requests:
+
+* **Status em Tempo Real:** O status atual da esteira e o histórico de execuções podem ser verificados em [GitHub Actions - CI/CD Pipeline](https://github.com/joaovsz/TP-Microservicos-Spring-3/actions/workflows/ci.yml).
+* **Etapas do Pipeline:**
+  1. Checkout do código-fonte do repositório (`actions/checkout@v4`).
+  2. Configuração do ambiente JDK 17 Eclipse Temurin com cache inteligente do Maven (`actions/setup-java@v4`).
+  3. Execução automatizada da suíte de testes unitários e de integração do `fornecedores-service` (`mvn clean test`).
+  4. Validação da integridade e compilação de todos os microsserviços do projeto (`mvn clean compile`).
+
+---
+
+## 8. Galeria de Evidências dos Exercícios (`evidencias-at/`)
+
+A pasta [`evidencias-at/`](./evidencias-at) reúne as capturas de tela organizadas cronologicamente que comprovam o atendimento a cada um dos 12 exercícios e às 20 rubricas avaliativas:
+
+| Arquivo | Exercício / Rubrica | Descrição da Evidência Comprovada |
+| :--- | :---: | :--- |
+| `01_ex1_eureka_dashboard_produtos_service.png` | Ex. 1 / Rub. 1.2 | Painel do Eureka (`localhost:8761`) com `PRODUTOS-SERVICE` registrado |
+| `02_ex3_terminal_fornecedores_service_porta_8084.png` | Ex. 3 / Rub. 1.1 | Terminal com Spring Boot do `fornecedores-service` subindo na porta `8084` |
+| `03_ex4_h2_console_cinco_fornecedores.png` | Ex. 4 / Rub. 3.1 | Console do H2 exibindo os 5 fornecedores criados pela carga inicial |
+| `04_ex5_get_fornecedores_200_ok.png` | Ex. 5 / Rub. 3.2 | Resposta HTTP `200 OK` na listagem de fornecedores |
+| `05_ex5_get_fornecedor_id_inexistente_404.png` | Ex. 5 / Rub. 3.2 | Resposta HTTP `404 Not Found` na busca por ID inexistente (999) |
+| `06_ex6_eureka_dashboard_fornecedores_service.png` | Ex. 6 / Rub. 1.2 | Eureka Dashboard com `FORNECEDORES-SERVICE` e `PRODUTOS-SERVICE` UP |
+| `07_ex7_config_server_propriedades_fornecedores.png` | Ex. 7 / Rub. 1.3 | Config Server (`localhost:8888`) servindo propriedades do `config-repo` |
+| `08_ex7_terminal_config_server_subindo.png` | Ex. 7 / Rub. 1.3 | Terminal exibindo o `config-server` iniciado na porta 8888 |
+| `09_ex8_gateway_get_fornecedores_porta_8085.png` | Ex. 8 / Rub. 3.4 | Requisição `GET /fornecedores` roteada com sucesso pelo API Gateway na porta 8085 |
+| `10_ex9_post_fornecedores_201_created.png` | Ex. 9 / Rub. 3.3 | Requisição `POST /fornecedores` persistindo e retornando HTTP `201 Created` com novo ID |
+| `11_ex10_feign_get_fornecedores_produtos_200.png` | Ex. 10 / Rub. 1.4 | Endpoint Feign `GET /fornecedores/produtos` trazendo produtos do catálogo com `200 OK` |
+| `12_ex11_terminal_docker_compose_up.png` | Ex. 11 / Rub. 2.4 | Terminal com comando `docker compose up -d` subindo todos os contêineres |
+| `13_ex11_gateway_docker_fornecedores_200.png` | Ex. 11 / Rub. 2.4 | Acesso integrado aos fornecedores através do Gateway conteinerizado na porta 8085 |
