@@ -19,28 +19,7 @@ Este projeto representa a implementação completa do **Assessment Test (AT)** d
 
 Partindo da base desenvolvida em sala de aula e no TP3, o ecossistema foi expandido com a arquitetura completa do **Spring Cloud**, incluindo Service Discovery, Configuração Centralizada, Roteamento Dinâmico por API Gateway, Comunicação Declarativa com OpenFeign, Banco H2 em memória, Conteinerização com Docker Compose e Pipeline de Integração Contínua (CI) com GitHub Actions.
 
-```mermaid
-flowchart TD
-    Client["Cliente / Bruno / Postman / Navegador"] -->|Porta 8085| Gateway["api-gateway (8085)\nSpring Cloud Gateway"]
-    
-    subgraph SpringCloudInfra ["Infraestrutura Spring Cloud"]
-        Eureka["eureka-server (8761)\nService Discovery"]
-        ConfigServer["config-server (8888)\nSpring Cloud Config"]
-        ConfigRepo["config-repo/\n(Repositório de Propriedades)"]
-        ConfigServer --- ConfigRepo
-    end
-
-    Gateway -->|Descoberta| Eureka
-    Gateway -->|Roteamento Dinâmico| Fornecedores["fornecedores-service (8084)\n(H2, JPA, Carga 5 Registros)"]
-    Gateway -->|Roteamento Dinâmico| Produtos["produtos-service (8081)\n(Catálogo de Produtos)"]
-
-    Fornecedores -->|Registra-se| Eureka
-    Produtos -->|Registra-se| Eureka
-    Gateway -->|Registra-se| Eureka
-
-    Fornecedores -->|Busca Configuração| ConfigServer
-    Fornecedores -->|OpenFeign GET /produtos| Produtos
-```
+![Arquitetura do Ecossistema Spring Cloud](./evidencias-at/arquitetura-ecossistema.svg)
 
 ---
 
@@ -182,3 +161,4 @@ A pasta [`evidencias-at/`](./evidencias-at) reúne as capturas de tela organizad
 | `11_ex10_feign_get_fornecedores_produtos_200.png` | Ex. 10 / Rub. 1.4 | Endpoint Feign `GET /fornecedores/produtos` trazendo produtos do catálogo com `200 OK` |
 | `12_ex11_terminal_docker_compose_up.png` | Ex. 11 / Rub. 2.4 | Terminal com comando `docker compose up -d` subindo todos os contêineres |
 | `13_ex11_gateway_docker_fornecedores_200.png` | Ex. 11 / Rub. 2.4 | Acesso integrado aos fornecedores através do Gateway conteinerizado na porta 8085 |
+| `14_ex12_pipeline_ci_cd_github_actions_sucesso.png` | Ex. 12 / Rub. 5.4 | Execução com sucesso do pipeline de CI no GitHub Actions com build e testes aprovados |
