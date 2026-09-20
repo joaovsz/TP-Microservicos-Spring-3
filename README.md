@@ -1,7 +1,7 @@
 # AT: Microsserviços com Spring Cloud (Continuação TP3)
 
 **Aluno:** João Vitor Pereira de Souza  
-**Matrícula:** [Insira sua matrícula aqui]
+**Matrícula:** 70636043177
 
 Trabalho prático focado em microsserviços escaláveis com Spring Boot 3, Spring Cloud (Eureka Server, Config Server, API Gateway, OpenFeign), autenticação JWT e arquitetura distribuída.
 
