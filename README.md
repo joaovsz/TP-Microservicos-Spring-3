@@ -1,4 +1,7 @@
-# TP3: Autenticação, Autorização e Arquitetura Reativa em Microsserviços
+# AT: Microsserviços com Spring Cloud (Continuação TP3)
+
+**Aluno:** João Vitor Pereira de Souza  
+**Matrícula:** 70636043177
 
 Trabalho prático focado em resolver autenticação, controle de acesso e padrões reativos em arquitetura de microsserviços usando Spring Boot 3, tokens JWT (JSON Web Tokens), Spring Data JDBC, Spring Data R2DBC e WebFlux.
 
