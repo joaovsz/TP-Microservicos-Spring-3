@@ -1,0 +1,36 @@
+name: Build and Test Fornecedores Service
+
+on:
+  push:
+    branches:
+      - main
+      - 'atividade-**'
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    name: Build & Test with Java 17 and Maven
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'maven'
+
+      - name: Compile and Test fornecedores-service
+        run: mvn -f fornecedores-service/pom.xml clean test
+
+      - name: Verify other modules compilation
+        run: |
+          mvn -f eureka-server/pom.xml clean compile
+          mvn -f config-server/pom.xml clean compile
+          mvn -f produtos-service/pom.xml clean compile
+          mvn -f api-gateway/pom.xml clean compile
