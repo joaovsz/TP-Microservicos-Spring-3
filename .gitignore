@@ -1,14 +1,55 @@
+### Maven & Java Build ###
 target/
+**/target/
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+*.zip
+*.tar.gz
+*.rar
 !.mvn/wrapper/maven-wrapper.jar
-!**/src/main/**/target/
-!**/src/test/**/target/
 
-### IDEs ###
+### Logs & Databases ###
+*.log
+*.log.*
+logs/
+*.pid
+*.seed
+*.pid.lock
+*.mv.db
+*.trace.db
+
+### IDEs & Editors ###
 .idea/
 *.iml
+*.ipr
+*.iws
 .vscode/
+.settings/
+.project
+.classpath
+.factorypath
+bin/
+nbproject/
+*.sublime-workspace
+*.sublime-project
 
-### OS files ###
+### OS Files ###
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
-*.log
+Desktop.ini
+
+### Environment & Secrets ###
+.env
+.env.local
+.env.*.local
+
+### Documentos Auxiliares Locais ###
+guia_evidencias_e_comandos.md
