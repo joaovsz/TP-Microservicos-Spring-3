@@ -1,6 +1,9 @@
-# TP3: Autenticação, Autorização e Arquitetura Reativa em Microsserviços
+# AT: Microsserviços com Spring Cloud (Continuação TP3)
 
-Trabalho prático focado em resolver autenticação, controle de acesso e padrões reativos em arquitetura de microsserviços usando Spring Boot 3, tokens JWT (JSON Web Tokens), Spring Data JDBC, Spring Data R2DBC e WebFlux.
+**Aluno:** João Vitor Pereira de Souza  
+**Matrícula:** [Insira sua matrícula aqui]
+
+Trabalho prático focado em microsserviços escaláveis com Spring Boot 3, Spring Cloud (Eureka Server, Config Server, API Gateway, OpenFeign), autenticação JWT e arquitetura distribuída.
 
 A ideia central do projeto foi separar completamente a responsabilidade de quem autentica e emite tokens (`auth-service`) de quem consome e valida as requisições de negócio (`order-service`), mantendo a comunicação descentralizada, sem estado (stateless) e com banco de dados isolado por serviço (*Database-per-Service*).
 
