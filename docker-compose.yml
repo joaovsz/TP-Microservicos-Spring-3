@@ -1,4 +1,88 @@
 services:
+  eureka-server:
+    build:
+      context: ./eureka-server
+      dockerfile: Dockerfile
+    container_name: eureka-server
+    ports:
+      - "8761:8761"
+    environment:
+      - SERVER_PORT=8761
+      - EUREKA_CLIENT_REGISTER_WITH_EUREKA=false
+      - EUREKA_CLIENT_FETCH_REGISTRY=false
+    networks:
+      - tp3-network
+    restart: unless-stopped
+
+  config-server:
+    build:
+      context: ./config-server
+      dockerfile: Dockerfile
+    container_name: config-server
+    ports:
+      - "8888:8888"
+    environment:
+      - SERVER_PORT=8888
+      - SPRING_PROFILES_ACTIVE=native
+      - SPRING_CLOUD_CONFIG_SERVER_NATIVE_SEARCH_LOCATIONS=file:./config-repo
+    volumes:
+      - ./config-repo:/app/config-repo
+    networks:
+      - tp3-network
+    restart: unless-stopped
+
+  produtos-service:
+    build:
+      context: ./produtos-service
+      dockerfile: Dockerfile
+    container_name: produtos-service
+    ports:
+      - "8081:8081"
+    environment:
+      - SERVER_PORT=8081
+      - EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://eureka-server:8761/eureka/
+    depends_on:
+      - eureka-server
+    networks:
+      - tp3-network
+    restart: unless-stopped
+
+  fornecedores-service:
+    build:
+      context: ./fornecedores-service
+      dockerfile: Dockerfile
+    container_name: fornecedores-service
+    ports:
+      - "8084:8084"
+    environment:
+      - SERVER_PORT=8084
+      - SPRING_PROFILES_ACTIVE=docker
+      - SPRING_CONFIG_IMPORT=optional:configserver:http://config-server:8888
+      - EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://eureka-server:8761/eureka/
+    depends_on:
+      - eureka-server
+      - config-server
+    networks:
+      - tp3-network
+    restart: unless-stopped
+
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    container_name: api-gateway
+    ports:
+      - "8085:8085"
+    environment:
+      - SERVER_PORT=8085
+      - EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://eureka-server:8761/eureka/
+    depends_on:
+      - eureka-server
+      - fornecedores-service
+    networks:
+      - tp3-network
+    restart: unless-stopped
+
   auth-db:
     image: postgres:16-alpine
     container_name: auth-db
@@ -39,28 +123,6 @@ services:
       - tp3-network
     restart: unless-stopped
 
-  auth-service:
-    build:
-      context: ./auth-service
-      dockerfile: Dockerfile
-    container_name: auth-service
-    ports:
-      - "8081:8081"
-    environment:
-      - SERVER_PORT=8081
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://auth-db:5432/auth_db
-      - SPRING_DATASOURCE_USERNAME=postgres
-      - SPRING_DATASOURCE_PASSWORD=postgres
-      - JWT_SECRET=my-ultra-secure-and-ultra-long-jwt-secret-key-tp3-microservices-2026-spring-boot
-      - JWT_ACCESS_TOKEN_EXPIRATION_MS=900000
-      - JWT_REFRESH_TOKEN_EXPIRATION_MS=86400000
-    depends_on:
-      auth-db:
-        condition: service_healthy
-    networks:
-      - tp3-network
-    restart: unless-stopped
-
   order-service:
     build:
       context: ./order-service
@@ -81,8 +143,6 @@ services:
     depends_on:
       order-db:
         condition: service_healthy
-      auth-service:
-        condition: service_started
     networks:
       - tp3-network
     restart: unless-stopped
